@@ -1,0 +1,71 @@
+from pandas import read_csv
+import matplotlib.pyplot as plt
+from mip import *
+
+# Importando o dataset
+dataset = read_csv(r'dataset_marvin_UPIT.csv')
+dataset.head
+
+# Informações do dataset
+ID = list(dataset['id'].values)
+X = list(dataset['x'].values)
+Y = list(dataset['y'].values)
+Z = list(dataset['z'].values)
+massa = list(dataset['Massa'].values)
+teor_au = list(dataset['Teor_au'].values)
+teor_cu = list(dataset['Teor_cu'].values)
+processo = list(dataset['Lucro'].values)
+c_mina = 60000000
+c_usina = 20000000
+
+# Modelo
+modelo = Model(sense = MAXIMIZE, solver_name=CBC)
+
+# Variáveis
+mina = [modelo.add_var(var_type=BINARY) for i in ID]
+usina = [modelo.add_var(var_type=BINARY) for i in ID]
+
+# Objetivo
+modelo.objective = maximize(xsum(
+    usina[i] * processo[i] * massa[i] + mina[i] * 0.9 * massa[i] for i in ID))
+
+contador = 0
+# Buscando "k" em cada ID, o bloco impedido (inferior)
+for k in ID:
+
+    # Buscando "i" em cada ID, o bloco superior
+    for i in ID:
+
+        # Se "k" e "i" forem IDs de blocos diferentes e "k" está abaixo de "i"
+        if k != i and Z[k] == Z[i] + 1:
+
+            # Se a coordenada X de "k" está próxima a de "i"
+            if -1 <= X[k] - X[i] <= 1:
+
+                # Se a coordenada Y de "k" está próxima a de "i"
+                if -1 <= Y[k] - Y[i] <= 1:
+                    #print(f" i = {i}, superior: {X[i]}, {Y[i]}", f"    k = {k}   inferior:{X[k]}, {Y[k]}")
+                    modelo.add_constr(mina[i] >= mina[k])
+                    contador += 1 
+                    if contador % 1000 == 0:
+                        modelo.write("modelo22.lp")
+                        print(contador)
+
+# Restrições de capacidade
+modelo.add_constr(xsum(mina[i] * massa[i] for i in ID) <= c_mina)
+modelo.add_constr(xsum(usina[i] * massa[i] for i in ID) <= c_usina)
+
+# Restrições de mina-usina
+for i in ID:
+    modelo.add_constr(mina[i] >= usina[i])
+
+modelo.write("modelo33.lp")
+ 
+r = modelo.optimize()
+print("Valor Total:", modelo.objetive_value)
+modelo.write("modelo.lp")
+
+
+for i in usina:
+    if i.x > 0.1:
+        print(f'{i.name} = {i.x}')
